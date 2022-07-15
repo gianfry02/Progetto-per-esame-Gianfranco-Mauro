@@ -1,0 +1,288 @@
+---
+title: "PROGETTO PER L'ESAME DI SCIENZA DEI DATI"
+author: "Gianfranco Mauro"
+date: "15/07/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE, echo=FALSE, warning=FALSE}
+library(readr)
+library(lubridate)
+library(tidyverse)
+library(maps) #libreria per visualizzare la mappa degli Stati Uniti
+library(scales)
+
+# dati sulle sparatorie
+sparatorie<-read.csv("C:/Users/gianf/OneDrive/Desktop/Università/1 anno/Scienza dei dati/Esame/pah_wikp_combo.csv")
+
+sparatorie <- sparatorie                                    
+sparatorie[sparatorie == ""]<- NA  # Rimpiazzo gli spazi vuoti con NA
+
+# dati sulle varie scuole 
+scuole<-read.csv("C:/Users/gianf/OneDrive/Desktop/Università/1 anno/Scienza dei dati/Esame/cps_01_formatted.csv")
+
+scuole <- subset(scuole, Year >= 1990)
+```
+
+# Introduzione
+
+Questa è un'analisi sulle sparatorie (non vengono considerate le vittime del terrorismo) effettuate nelle Scuole e Università degli Stati Uniti da studenti o da altre persone accadute dal 1990 ad oggi.
+
+L'obiettivo di questa analisi sarà quello di cercare di capire se esistono dei "pattern" presenti nella maggior parte delle sparatorie e infine capire quale tipologia di studente è più a rischio di incorrere in una sparatoria scolastica.
+
+Breve descrizione delle variabili per il dataset sulle sparatorie:
+
+-   Date: data dell'accaduto
+-   City: luogo dell'accaduto
+-   State: uno dei 50 Stati dove sono avvenute le sparatorie
+-   Area Type: specifica se la scuola/univesità si trova in zona urbana, periferica o rurale
+-   School: C = Università, HS = scuole superiori, MS = scuole medie, ES = scuole elementari, - = non conosciuto
+-   Fatalities: \# morti
+-   Wounded: \# feriti
+
+Breve descrizione delle variabili per il dataset delle scuole:
+
+-   Year: Anno
+-   Total.enrolled: somma degli studenti di tutti gli istituti iscritti in un determinato anno
+-   Public, Private: indicano se una scuola è pubblica o privata
+-   N, K, E, H, C: indicano rispettivamente se un istituto è una scuola di infermieristica, scuola dell'infanzia, scuola elementare, scuola superiore o un'Università
+
+```{r, echo = FALSE, warning = FALSE}
+# Attribuiamo mese e giorno della settimana alla data e la modifico in modo da essere in forma aa/mm/gg
+ sparatorie <- sparatorie %>% mutate(new_date = mdy(Date))
+ sparatorie <- sparatorie %>% mutate(day = factor(day(new_date)),
+                    month = factor(month(new_date)),
+                    year = factor(year(new_date)),
+                    wday = factor(wday(new_date))
+)
+
+ sparatorie$month <-factor(sparatorie$month,
+               labels = c("Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set","Ott", "Nov", "Dic"))
+ sparatorie$wday <-factor(sparatorie$wday,
+               labels = c("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"))
+
+   names(sparatorie)[names(sparatorie) == "year"] <- "Anno"
+   names(sparatorie)[names(sparatorie) == "month"] <- "Mese"
+   names(sparatorie)[names(sparatorie) == "day"] <- "Giorno" 
+   names(sparatorie)[names(sparatorie) == "wday"] <- "Giorno_settimana"
+   names(sparatorie)[names(sparatorie) == "new_date"] <- "Nuova_data"
+   names(sparatorie)[names(sparatorie) == "Fatalities"] <- "Vittime"
+   names(sparatorie)[names(sparatorie) == "Wounded"] <- "Feriti"
+   names(sparatorie)[names(sparatorie) == "Date"] <- "Data" 
+   names(sparatorie)[names(sparatorie) == "State"] <- "Stato" 
+   names(sparatorie)[names(sparatorie) == "City"] <- "Città" 
+   names(sparatorie)[names(sparatorie) == "Source"] <- "Fonte" 
+   names(sparatorie)[names(sparatorie) == "School"] <- "Scuola" 
+   names(sparatorie)[names(sparatorie) == "AreaType"] <- "Tipo_Area" 
+```
+
+# Mappa degli Stati Uniti d'America che evidenzia la distribuzione delle vittime
+
+In questa prima fase andremo ad analizzare la distribuzione dei decessi e delle sparatorie tramite una mappa degli USA e altri grafici correlati.
+
+```{r, message = FALSE, echo=FALSE}
+# Creiamo un tema per il prossimo grafico con ggplot2
+theme.map <- theme(
+  text = element_text(family = 'mono', color = "black")
+  ,plot.title = element_text(size = 19, face = 'bold')
+  ,plot.background = element_rect(fill = "#bdcae5")
+  ,legend.background = element_rect(fill = "#bdcae5")
+  ,panel.background = element_rect(fill = "#bdcae5")
+  ,panel.grid = element_blank()
+  ,legend.key = element_blank()
+  ,axis.text = element_blank()
+  ,axis.ticks = element_blank()
+  ,axis.title = element_blank())
+```
+
+```{r, message=FALSE , echo = FALSE, warning=FALSE}
+
+mappaUS <- map_data("state")
+
+shoot <- sparatorie %>% group_by(Stato, Vittime) %>% count() %>% arrange(desc(Vittime)) 
+shoot <- as.data.frame(shoot)
+n <- inner_join(mappaUS, shoot %>% mutate(State=tolower(Stato)), by=c("region"="State"))
+
+plot <- function(x) {
+  n$x <- n[,x]
+ggplot(data=mappaUS, mapping = aes(x = long, y= lat , group = group), na.rm=TRUE) + geom_polygon(data = n, aes(fill = x), color = "grey", size = 0.05) + labs(fill = x) + scale_fill_gradientn(colors = c("white", "#da5362" ,"#cd2d3f", "#a32332") , values = scales::rescale(c(5, 10, 15, 20, 25, 30, 35, 40)))+theme.map
+}
+```
+
+```{r, fig.width=9, , echo = FALSE}
+plot("Vittime") + labs(title = "Vittime delle sparatorie scolastiche, USA (1990-oggi)",fill = str_c("Vittime"))
+```
+
+Possiamo vedere come gli Stati del Texas, Colorado, Florida, Connecticut e Virginia sono quelli con il maggior numero di morti nelle scuole, ovvero gli stati che liberalizzano di più le armi da fuoco e, considerando il numero di abitanti per ognuni di essi, sono proprio quelli con il maggior numero di armi da fuoco registrate pro capite.
+
+## Stati con il maggior numero di sparatorie
+
+E' opportuno andare a controllare se c'è una relazione tra il numero di morti e il numero di sparatorie. Verifichiamo dunque se i 5 Stati sopracitati al punto precedente sono presenti anche in questa classificazione:
+
+```{r, echo = FALSE}
+top5stati <- sparatorie %>% group_by(Stato) %>% summarise(Sparatorie = n()) %>% arrange(desc(Sparatorie)) %>% head(5)
+
+top5stati$State <- factor(top5stati$Stato)
+
+ggplot(top5stati, aes(reorder(Stato, -Sparatorie), Sparatorie, fill = Stato)) + geom_bar(stat = "identity")  +theme_bw() +labs(title="I 5 stati degli USA con più sparatorie scolastiche", x="Stati") +theme(axis.text.x = element_text(angle = 50, size = 10, vjust = 0.4, face = "bold"), plot.title = element_text(size = 16, face = "bold", vjust = 2)) + theme(legend.position = "none")
+
+```
+
+Troviamo che lo Stato della California ha un numero esorbitante di sparatorie, più di 80, ma non è presente nei 5 stati con più vittime, mentre Texas e Florida sono presenti in entrambi i grafici.
+
+## Città statunitensi con il maggior numero di sparatorie
+
+Ora, andiamo ad esaminare le 10 città statunitensi con i maggiori casi di sparatorie scolastiche degli ultimi anni:
+
+```{r, echo = FALSE}
+top10città <- sparatorie %>% group_by(Città) %>% summarise(Sparatorie = n()) %>% arrange(desc(Sparatorie)) %>% head(10)
+
+top10città$Città <- factor(top10città$Città)
+
+ggplot(top10città, aes(reorder(Città, -Sparatorie), Sparatorie, fill = Città)) + geom_bar(stat = "identity") + labs(title="Le 10 città degli USA con più sparatorie scolastiche", x="Città") +theme_bw() +theme(axis.text.x = element_text(angle = 50, size = 10, vjust = 0.4, face = "bold"), plot.title = element_text(size = 16, face = "bold", vjust = 1.5)) + theme(legend.position = "none")
+```
+
+Notiamo subito come la Città di Chicago, Illinois è quella con il più alto numero di sparatorie, fatto che non mi stupisce in quanto è risaputo che è una delle città con la criminalità più alta degli Stati Uniti d'America.
+
+Dopo Chicago troviamo rispettivamente:
+
+-Houston, Texas
+
+-Detroit, Michigan
+
+-Los Angeles, California
+
+-Memphis, Tennessee
+
+Tutte con più di 10 casi registrati di sparatorie scolastiche.
+
+# Distribuzione degli studenti nei vari istituti scolastici
+
+Prima di analizzare il dataset sulle sparatorie in modo più specifico, analizziamo alcuni dati di base sulla popolazione scolastica, ovvero quanti studenti si iscrivono ogni anno e come si suddividono nei diversi livelli scolastici:
+
+```{r, echo = FALSE}
+scuole2 <- data.frame(Anno = scuole$Year,                            
+                       N.studenti = c(scuole$K.Total, scuole$E.Total, scuole$C.Total, scuole$H.Total), Scuole = c(rep("K.Total", nrow(scuole)),
+                   rep("E.Total", nrow(scuole)),
+                   rep("C.Total", nrow(scuole)),
+                   rep("H.Total", nrow(scuole))))
+
+ggplot(scuole2, aes(Anno, N.studenti, col = Scuole, fill=Scuole),) +           
+  geom_area(alpha=0.7)+labs(title="Numero di studenti iscritti all'anno")+theme_bw()+ theme(axis.text.x = element_text(size = 9.8, vjust = 0.5), plot.title = element_text(size = 18, face = "bold", vjust = 1.5))
+```
+
+Possiamo notare come gli istituti con più studenti sono le Università (C), seguiti dalle scuole elementari (E), dalle scuole superiori (H) e infine dalle scuole dell'infanzia (K).
+
+Successivamente capiremo perchè questi dati sono molto rilevanti per l'analisi.
+
+# Numero di sparatorie e numero di morti negli istituti scolastici ed universitari per anno
+
+Nei prossimi grafici, andremo ad osservare con precisione il numero delle sparatorie avvenute per anno e il numero dei morti derivati da esse.
+
+```{r, echo = FALSE}
+ ggplot(data = sparatorie, aes(Anno)) + 
+  geom_bar(fill='orange') +
+  labs(title="Numero di sparatorie per anno",y="Sparatorie") + theme_bw()+theme(axis.text.x = element_text(angle = 50, size = 9.8, vjust = 0.5), plot.title = element_text(size = 18, face = "bold", vjust = 1.5))
+
+```
+
+Da questo grafico possiamo fare le seguenti considerazioni:
+
+-   Notiamo come la media di sparatorie è di circa 20 all'anno, un numero a dir poco impressionante.
+-   Se dividiamo il grafico in due parti 1990-2005 e 2006-2022, la seconda metà vede una media di sparatorie leggermente più alta, influenzata sicuramente dal 2013, l'anno che ne ha avute di più.
+
+```{r, echo = FALSE}
+sparatorie %>% 
+  group_by(Anno) %>%
+  summarize(Vittime = sum(Vittime)) %>%
+  ggplot(aes(Anno, Vittime)) + 
+  geom_bar(fill = "orange", stat = "identity") +
+  ggtitle("Numero di vittime dal 1990 ad oggi") +theme_bw()+ theme(axis.text.x = element_text(angle = 50, size = 9.8, vjust = 0.5,), plot.title = element_text(size = 18, face = "bold", vjust = 1.5))
+```
+
+Cosa notiamo invece da questo grafico?
+
+-   Una delle prime cose che ho considerato è sicuramente il fatto che gli anni 2007 e 2012 hanno un numero di vittime sproporzionato rispetto a quelli precedenti o successivi. Ciò è certamente dovuto ai disastri del Virginia Polytechnic Institute and State University a Blacksburg in Virginia dove uno studente sud-koreano il 16-04-2007 ha ucciso 33 persone e ferite 17, e al massacro nella Sandy Hook Elementary School del Connecticut in cui un 20enne, il 14-12-2012, uccise 28 persone e ne ferì altre 2.
+
+-   Se mettiamo in relazione i due grafici che evidenziano il numero di sparatorie e di vittime negli anni si può vedere come non ci siano relazioni tra il numero alto di vittime e il numero alto di sparatorie, di fatto è proprio il contrario.
+
+-   Notiamo inoltre come nel 2022, nonostante l'anno non sia ancora concluso, il numero di vittime è relativamente alto, dovuto anch'esso dalla recente tragedia avvenuta il 24-05-2022 nella Robb Elementary School dove sono stati registrati 22 morti e 15 feriti.
+
+Continuiamo ora la nostra analisi andando a verificare la tipologia di istituto più colpito da sparatorie e in quali di essi risultano più vittime in totale:
+
+```{r, echo = FALSE}
+sparatorie %>%
+  filter(Scuola !="NA") %>%
+  ggplot(aes(Anno, fill = Scuola )) + geom_bar(position = "fill") + xlab("Anno") + 
+   scale_y_continuous(labels = scales :: percent_format(accuracy = 1)) +
+  labs(title="Percentuale di sparatorie per istituto dal 1990 ad oggi",y="Sparatorie") +theme_bw()+ theme(axis.text.x = element_text(angle = 50, size   = 9.8, vjust = 0.5,), plot.title = element_text(size = 18, face = "bold", vjust = 1.5)) 
+
+```
+
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+sparatorie %>% 
+  filter(Scuola !="NA") %>% group_by(Anno, Scuola) %>%
+  summarize(Vittime = sum(Vittime)) %>%
+  ggplot(aes(Anno, Vittime, fill = Scuola)) + 
+  geom_bar(position = "fill", stat = "identity") + 
+  labs (title = "Numero di vittime per istituto dal 1990 ad oggi") + 
+  theme(legend.position = "right") + theme_bw() + theme(axis.text.x = element_text(angle = 50, size = 9.8, vjust = 0.5),      plot.title = element_text(size = 18, face = "bold", vjust = 1.5))
+
+```
+
+Da questi due grafici notiamo subito alcuni elementi:
+
+-   Le scuole superiori (HS) sono gli istututi più colpiti sia dal punto di vista delle sparatorie che delle vittime, seguite solo dalle Università (C).
+
+-   Come visto in precedenza, gli anni 2007 e 2012 sono stati quelli con più vittime in quanto in questi due periodi sono avvenute le due sparatorie con più decessi degli ultimi 32 anni.
+
+A questo punto controlliamo quali sono le differenze tra il volume delle sparatorie e le tipologie di area:
+
+```{r, echo = FALSE}
+sparatorie %>% filter(Tipo_Area!="NA") %>%ggplot(aes(Anno, fill = Tipo_Area )) + geom_bar() + xlab("Anno") + labs(title="Sparatorie nelle scuole per tipo di area", y="Sparatorie") + theme_bw()+ theme(axis.text.x = element_text(angle = 50, size = 9.8, vjust = 0.5), plot.title = element_text(size = 18, face = "bold", vjust = 1.5))
+```
+
+Il grafico ci mostra come la gran parte delle sparatorie scolastiche negli ultimi anni è avvenuta in area urbana. Ciò sta a significare che non c'è relazione tra condizioni di vita e il numero di avvenimenti.
+
+Come ultima analisi, direi di andare a confrontare la frequenza delle sparatorie per tipologia di scuola e mese per vedere quale di questi ultimi sono più a rischio:
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+hm <- aggregate(sparatorie$Scuola, by= list(sparatorie$Scuola,
+sparatorie$Mese), FUN = length)
+
+names(hm) <- c("Scuola", "Mese", "Numero")
+#temp
+hm %>% 
+ggplot(aes(x= Scuola, y= factor(Mese), na.rm = TRUE)) +
+geom_tile(aes(fill = Numero)) +
+scale_fill_gradientn(colors = c("#e897a0" ,"#da5362" ,"#cd2d3f", "#a32332"), values = scales::rescale(c(0, 10, 20, 30, 60))) +
+theme_bw() + labs(title="Frequenza delle sparatorie negli USA vs. scuola e mese", y="Mese") + theme(axis.text.x = element_text(angle = 50, size = 9.8, vjust = 0.5), plot.title = element_text(size = 15, face = "bold", vjust = 1.5)) 
+ 
+```
+
+-   Come abbiamo già visto prima, le scuole superiori (HS) sono gli istituti con la frequenza più alta di sparatorie e notiamo come il mese di gennaio sia quello con il numero più alto, seguito dagli altri mesi invernali.
+-   I mesi estivi ovviamente hanno molti meno casi in quanto non ci sono lezioni.
+
+## Conclusioni
+
+Dalle analisi che abbiamo effettuato, possiamo affermare che:
+
+-   Nonostante le scuole superiori abbiano un numero minore di studenti rispetto ad altri istituti come le scuole elementari o le Università, le sparatorie scolastiche, e di conseguenza le vittime, sono molto più alte rispetto agli altri istituti, ciò significa che sono molto più a rischio ad essere coinvolti in esse.
+
+-   Le sparatorie sono molto più frequenti da gennaio ad aprile, per poi quasi arrestarsi durante i mesi estivi e successivamente risalgono in modo sostanziale da settembre a dicembre.
+
+-   Abbiamo fatto cenno alle tragedie accadute nel 2007 e nel 2012 in cui ci sono stati rispettivamente 33 e 28 morti: da questi dati, se osserviamo i grafici, vediamo che gli anni successivi, il 2008 e il 2013, hanno un numero di sparatorie considerevolmente maggiore rispetto ai precedenti.
+
+-   Le sparatorie totali stanno lentamente aumentando di anno in anno.
+
+-   La maggior parte delle sparatorie è avvenuta in area urbana, ciò significa che le condizioni di vita non è il fattore determinante che porta una determinata persona a sparare.
+
+-   Lo stato della California è quello con il numero più grave di avvenimenti, che ne ha circa il 50% in più rispetto al secondo e terzo Stato in classifica.
+
+-   Le città con un alto tasso di criminalità come Chicago e Los Angeles sono anche quelle con il numero più alto di sparatorie.
